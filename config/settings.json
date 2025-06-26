@@ -46,7 +46,7 @@
   "cache": {
     "max_age_hours": 24,
     "auto_refresh": true,
-    "data_directory": "data"
+    "data_directory": "Data"
   },
   
   "data_sources": {
