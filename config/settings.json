@@ -50,7 +50,7 @@
   },
   
   "data_sources": {
-    "sciensano_file": "COVID19BE_CASES_MUNI.json",
+    "sciensano_file": "data/COVID19BE_CASES_MUNI.json",
     "date_format": "YYYY-MM-DD",
     "period": {
       "start_date": "2021-01-01", 
