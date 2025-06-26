@@ -338,12 +338,12 @@ Propriétés du Graphe Probabiliste:
         print("✅ Sauvegardé : visualizations/8_matrices_markov_analyse.png")
     
     def plot_historical_prediction_validation(self):
-        """NOUVEAU: Validation sur période historique (Mars-Juin 2021)"""
-        print("📊 Génération : Validation historique Mars-Juin 2021...")
+        """MODIFIÉ: Validation sur Septembre 2021 (entraîné sur Juin-Août 2021)"""
+        print("📊 Génération : Validation historique Septembre 2021...")
         
-        # Période de validation historique
-        validation_start = "2021-03-01"
-        validation_end = "2021-06-30"
+        # Période de validation : Septembre 2021
+        validation_start = "2021-09-01"
+        validation_end = "2021-09-30"
         
         # Extraction des données réelles sur cette période
         real_dates = []
@@ -356,20 +356,37 @@ Propriétés du Graphe Probabiliste:
                     real_data[commune].append(data.get(commune, 0))
         
         if not real_dates:
-            print(Fore.YELLOW + "⚠️ Pas de données pour la période Mars-Juin 2021")
+            print(Fore.YELLOW + "⚠️ Pas de données pour Septembre 2021")
             return
         
         # Simulation de prédictions avec le modèle de Markov
-        # On utilise les premiers points comme état initial
-        best_alpha = self.markov_models["models"]["metadata"]["best_alpha_geo"]
-        transition_matrix = np.array(self.markov_models["models"][f"alpha_geo_{best_alpha}"]["transition_matrix"])
+        # État initial : 31 août 2021
+        initial_date = "2021-08-31"
+        
+        # Chercher la dernière date d'août disponible
+        aug_dates = [date for date in self.smoothed_data["data"].keys() if "2021-08" in date]
+        if aug_dates:
+            initial_date = max(aug_dates)
+        
+        print(f"📅 État initial pour prédictions : {initial_date}")
         
         # Prédictions simulées (utilisation de la matrice de transition)
         pred_data = {commune: [] for commune in self.main_communes}
         
-        # État initial (premier point de la période)
-        initial_state = np.array([real_data[commune][0] for commune in self.main_communes])
-        current_state = initial_state.copy()
+        if initial_date in self.smoothed_data["data"]:
+            # État initial depuis les vraies données
+            initial_values = []
+            for commune in self.main_communes:
+                initial_values.append(self.smoothed_data["data"][initial_date].get(commune, 0))
+            
+            current_state = np.array(initial_values)
+        else:
+            # État initial par défaut
+            current_state = np.array([5.0] * len(self.main_communes))
+        
+        # Utilisation de la matrice de transition pour prédire septembre
+        best_alpha = self.markov_models["models"]["metadata"]["best_alpha_geo"]
+        transition_matrix = np.array(self.markov_models["models"][f"alpha_geo_{best_alpha}"]["transition_matrix"])
         
         for i in range(len(real_dates)):
             for j, commune in enumerate(self.main_communes):
@@ -380,7 +397,7 @@ Propriétés du Graphe Probabiliste:
                 next_state = transition_matrix @ current_state
                 current_state = np.maximum(next_state, 0)  # Éviter les valeurs négatives
         
-        # Création des graphiques multi-pages
+        # Création des graphiques multi-pages pour Septembre 2021
         communes_per_page = 6
         n_pages = (len(self.main_communes) + communes_per_page - 1) // communes_per_page
         
@@ -390,8 +407,8 @@ Propriétés du Graphe Probabiliste:
             page_communes = self.main_communes[start_idx:end_idx]
             
             fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-            fig.suptitle(f'Validation Historique - Page {page+1}/{n_pages}\n' + 
-                        f'Comparaison Réalité vs Modèle Markov (Mars-Juin 2021)',
+            fig.suptitle(f'Validation Septembre 2021 - Page {page+1}/{n_pages}\n' + 
+                        f'Prédictions vs Réalité (Modèle entraîné sur Juin-Août 2021)',
                         fontsize=16, fontweight='bold')
             
             for i, commune in enumerate(page_communes):
@@ -401,40 +418,44 @@ Propriétés du Graphe Probabiliste:
                 if commune in real_data and real_data[commune]:
                     # Données réelles
                     ax.plot(real_dates, real_data[commune], 
-                           color='blue', linewidth=2, marker='o', markersize=4,
+                           color='blue', linewidth=2.5, marker='o', markersize=5,
                            label='Données réelles', alpha=0.8)
                     
                     # Prédictions du modèle de Markov
                     ax.plot(real_dates, pred_data[commune], 
-                           color='red', linewidth=2, marker='s', markersize=4,
-                           linestyle='--', label='Modèle Markov', alpha=0.8)
+                           color='red', linewidth=2.5, marker='s', markersize=5,
+                           linestyle='--', label='Prédictions Markov', alpha=0.8)
                     
-                    # Zone de confiance
+                    # Calcul de l'erreur
                     pred_array = np.array(pred_data[commune])
                     real_array = np.array(real_data[commune])
                     
-                    # Calcul de l'erreur
                     mae = np.mean(np.abs(real_array - pred_array))
                     correlation = np.corrcoef(real_array, pred_array)[0, 1] if len(real_array) > 1 else 0
                     
-                    # Zone d'incertitude basée sur l'erreur observée
-                    uncertainty = pred_array * 0.15  # 15% d'incertitude
-                    ax.fill_between(real_dates, 
-                                   pred_array - uncertainty, 
-                                   pred_array + uncertainty, 
-                                   alpha=0.2, color='red', label='Zone d\'incertitude')
+                    # Erreur relative moyenne
+                    relative_errors = []
+                    for pred_val, real_val in zip(pred_array, real_array):
+                        if real_val > 0:
+                            relative_errors.append(abs(pred_val - real_val) / real_val)
+                    mean_rel_error = np.mean(relative_errors) * 100 if relative_errors else 0
                     
                     ax.set_title(f'{commune.replace("(Bruxelles-Capitale)", "").strip()}\n' +
-                               f'MAE = {mae:.2f} | Corrélation = {correlation:.3f}', 
+                               f'MAE={mae:.2f} | Corr={correlation:.3f} | Err={mean_rel_error:.1f}%', 
                                fontweight='bold', fontsize=10)
                     ax.set_ylabel('Nombre de cas')
                     ax.grid(True, alpha=0.3)
                     ax.legend(fontsize=8)
                     
-                    # Format des dates
+                    # Format des dates pour septembre
                     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
-                    ax.xaxis.set_major_locator(mdates.WeekdayLocator(interval=2))
+                    ax.xaxis.set_major_locator(mdates.DayLocator(interval=5))
                     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, fontsize=8)
+                    
+                    # Mise en évidence des weekends
+                    for date in real_dates:
+                        if date.weekday() >= 5:  # Samedi=5, Dimanche=6
+                            ax.axvline(date, color='gray', alpha=0.2, linestyle=':')
             
             # Suppression des subplots vides
             for i in range(len(page_communes), 6):
@@ -443,10 +464,89 @@ Propriétés du Graphe Probabiliste:
                     fig.delaxes(axes[row, col])
             
             plt.tight_layout()
-            plt.savefig(f'visualizations/9_validation_historique_page{page+1}.png', 
+            plt.savefig(f'visualizations/septembre2021_validation_page{page+1}.png', 
                        dpi=300, bbox_inches='tight')
             plt.show()
-            print(f"✅ Sauvegardé : visualizations/9_validation_historique_page{page+1}.png")
+            print(f"✅ Sauvegardé : visualizations/septembre2021_validation_page{page+1}.png")
+        
+        # GRAPHIQUE DE SYNTHÈSE GLOBALE
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+        fig.suptitle('Analyse Globale - Validation Septembre 2021\nModèle Markov vs Réalité', 
+                     fontsize=16, fontweight='bold')
+        
+        # Graphique 1: Évolution totale Bruxelles
+        total_real_daily = []
+        total_pred_daily = []
+        
+        for i in range(len(real_dates)):
+            daily_real = sum(real_data[commune][i] for commune in self.main_communes if real_data[commune])
+            daily_pred = sum(pred_data[commune][i] for commune in self.main_communes if pred_data[commune])
+            total_real_daily.append(daily_real)
+            total_pred_daily.append(daily_pred)
+        
+        ax1.plot(real_dates, total_real_daily, 'b-', linewidth=3, marker='o', 
+                label='Total Réel Bruxelles', markersize=6)
+        ax1.plot(real_dates, total_pred_daily, 'r--', linewidth=3, marker='s', 
+                label='Total Prédit Bruxelles', markersize=6)
+        
+        ax1.set_title('Évolution Totale - Toutes Communes Bruxelles', fontweight='bold')
+        ax1.set_ylabel('Cas totaux par jour')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+        
+        # Graphique 2: Scatter plot prédictions vs réalité
+        all_pred_values = []
+        all_real_values = []
+        
+        for commune in self.main_communes:
+            if commune in real_data and real_data[commune]:
+                all_pred_values.extend(pred_data[commune])
+                all_real_values.extend(real_data[commune])
+        
+        ax2.scatter(all_real_values, all_pred_values, alpha=0.6, s=50)
+        
+        # Ligne de référence y=x
+        min_val = min(min(all_real_values), min(all_pred_values))
+        max_val = max(max(all_real_values), max(all_pred_values))
+        ax2.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.8, label='Prédiction parfaite')
+        
+        # Calcul R²
+        correlation_global = np.corrcoef(all_real_values, all_pred_values)[0, 1]
+        r_squared = correlation_global ** 2
+        
+        ax2.set_title(f'Prédictions vs Réalité\nR² = {r_squared:.3f}', fontweight='bold')
+        ax2.set_xlabel('Cas réels')
+        ax2.set_ylabel('Cas prédits')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig('visualizations/septembre2021_synthese_globale.png', dpi=300, bbox_inches='tight')
+        plt.show()
+        print("✅ Sauvegardé : visualizations/septembre2021_synthese_globale.png")
+        
+        # STATISTIQUES FINALES
+        print(f"\n📊 STATISTIQUES SEPTEMBRE 2021:")
+        print(f"   - Période testée : {validation_start} → {validation_end}")
+        print(f"   - R² global : {r_squared:.3f}")
+        print(f"   - Corrélation : {correlation_global:.3f}")
+        
+        global_mae = np.mean(np.abs(np.array(all_pred_values) - np.array(all_real_values)))
+        print(f"   - MAE globale : {global_mae:.2f} cas")
+        
+        # Tendance globale
+        total_real_start = np.mean(total_real_daily[:5])
+        total_real_end = np.mean(total_real_daily[-5:])
+        total_pred_start = np.mean(total_pred_daily[:5])
+        total_pred_end = np.mean(total_pred_daily[-5:])
+        
+        real_trend = (total_real_end - total_real_start) / total_real_start * 100 if total_real_start > 0 else 0
+        pred_trend = (total_pred_end - total_pred_start) / total_pred_start * 100 if total_pred_start > 0 else 0
+        
+        print(f"   - Tendance réelle : {real_trend:+.1f}%")
+        print(f"   - Tendance prédite : {pred_trend:+.1f}%")
+        print(f"   - Écart tendances : {abs(real_trend - pred_trend):.1f} points")
     
     def plot_stochastic_properties(self):
         """NOUVEAU: Analyse des propriétés stochastiques du graphe probabiliste"""
