@@ -131,8 +131,6 @@ class MatrixMarkovModel:
         
         Solution analytique :
         A = X(t+1) · X(t)ᵀ · (X(t) · X(t)ᵀ)⁻¹
-        
-        CORRECTION : Régularisation pour stabilité épidémiologique
         """
         print("🔢 Estimation de A_brute par moindres carrés...")
         print("📐 Formule : A = X(t+1) · X(t)ᵀ · (X(t) · X(t)ᵀ)⁻¹")
